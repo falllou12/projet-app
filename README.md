@@ -51,6 +51,7 @@ un `ALTER TABLE` construit avec une f-string. « 0 problème » ne veut donc pas
 | Brute-force du code 2FA | 5 essais/min par IP + 5 échecs max par session | `login_2fa` |
 | Contournement de la 2FA | Pas de `user_id` en session avant le code ; état en attente expirant après 5 min | `login`, `login_2fa` |
 | Perte du téléphone | 10 codes de secours à usage unique, stockés hachés | `store_recovery_codes` |
+| Liste de codes de secours fuitée | Régénération (mot de passe + code 2FA) qui invalide TOUS les anciens codes ; alerte à ≤ 3 codes | `regenerate_recovery_codes` |
 | Cookie de session volé | `session_version` en base, comparée à chaque requête ; changer de mot de passe ou « Déconnecter les autres appareils » l'incrémente | `load_user`, `revoke_other_sessions` |
 | Changement de mot de passe par un voleur de session | Ancien mot de passe redemandé, 5 essais/min | `change_password` |
 | Suppression du compte par un voleur de session | Mot de passe + code 2FA redemandés, POST + CSRF, 5 essais/min | `delete_account` |

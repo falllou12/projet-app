@@ -140,9 +140,9 @@ def test_disable_requires_password_and_code(tmp_path):
     secret, codes = enable_2fa(app, c)
     c.post("/login", data={"username": "alice", "password": PWD})
     c.post("/login/2fa", data={"code": codes[0]})
-    c.post("/security/2fa/disable", data={"password": "mauvais-mdp-xx", "code": code_at(secret, 1)})
+    c.post("/security/2fa/disable", data={"disable-password": "mauvais-mdp-xx", "disable-code": code_at(secret, 1)})
     assert secret_of(app, "alice") is not None
-    c.post("/security/2fa/disable", data={"password": PWD, "code": code_at(secret, 1)})
+    c.post("/security/2fa/disable", data={"disable-password": PWD, "disable-code": code_at(secret, 1)})
     assert secret_of(app, "alice") is None
 
 

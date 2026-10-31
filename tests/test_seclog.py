@@ -137,7 +137,7 @@ def test_account_deleted_kept_in_file(tmp_path):
     app = make_app(tmp_path)
     c = app.test_client()
     register_and_login(c, "alice")
-    c.post("/security/delete", data={"password": PWD})
+    c.post("/security/delete", data={"delete-password": PWD})
     assert events(tmp_path)[-1] == "account_deleted"
     with app.app_context():
         assert db.get_db().execute("SELECT COUNT(*) FROM security_events").fetchone()[0] == 0

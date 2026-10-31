@@ -21,7 +21,7 @@ def test_delete_requires_password(tmp_path):
     register_and_login(victim, "alice")
     # Un voleur de session ne connaît pas le mot de passe
     thief.set_cookie("session", victim.get_cookie("session").value)
-    thief.post("/security/delete", data={"password": "je-devine-un-truc"})
+    thief.post("/security/delete", data={"delete-password": "je-devine-un-truc"})
     assert count(app, "users") == 1
     assert victim.get("/notes").status_code == 200
 
@@ -31,7 +31,7 @@ def test_delete_removes_user_and_notes(tmp_path):
     c = app.test_client()
     register_and_login(c, "alice")
     c.post("/notes/new", data={"title": "t", "body": SECRET_NOTE})
-    r = c.post("/security/delete", data={"password": PWD})
+    r = c.post("/security/delete", data={"delete-password": PWD})
     assert r.headers["Location"].endswith("/login")
     assert count(app, "users") == 0
     assert count(app, "notes") == 0                 # ON DELETE CASCADE
@@ -48,7 +48,7 @@ def test_deleted_note_not_recoverable_from_file(tmp_path):
     c.post("/notes/new", data={"title": "t", "body": SECRET_NOTE})
     raw = (tmp_path / "t.sqlite").read_bytes()
     assert SECRET_NOTE.encode() in raw              # présente avant…
-    c.post("/security/delete", data={"password": PWD})
+    c.post("/security/delete", data={"delete-password": PWD})
     raw = (tmp_path / "t.sqlite").read_bytes()
     assert SECRET_NOTE.encode() not in raw          # …effacée après (secure_delete)
 
@@ -65,10 +65,10 @@ def test_delete_requires_2fa_when_enabled(tmp_path):
     secret, codes = enable_2fa(app, c)
     c.post("/login", data={"username": "alice", "password": PWD})
     c.post("/login/2fa", data={"code": codes[0]})
-    c.post("/security/delete", data={"password": PWD})                       # sans code
-    c.post("/security/delete", data={"password": PWD, "code": "000000"})     # mauvais code
+    c.post("/security/delete", data={"delete-password": PWD})                       # sans code
+    c.post("/security/delete", data={"delete-password": PWD, "delete-code": "000000"})     # mauvais code
     assert count(app, "users") == 1
-    c.post("/security/delete", data={"password": PWD, "code": code_at(secret, 1)})
+    c.post("/security/delete", data={"delete-password": PWD, "delete-code": code_at(secret, 1)})
     assert count(app, "users") == 0
     assert count(app, "recovery_codes") == 0                                  # CASCADE
 
@@ -78,7 +78,7 @@ def test_other_devices_logged_out(tmp_path):
     laptop, phone = app.test_client(), app.test_client()
     register_and_login(laptop, "alice")
     register_and_login(phone, "alice")
-    phone.post("/security/delete", data={"password": PWD})
+    phone.post("/security/delete", data={"delete-password": PWD})
     assert laptop.get("/notes").status_code == 302
 
 
@@ -88,7 +88,7 @@ def test_other_users_untouched(tmp_path):
     register_and_login(alice, "alice")
     register_and_login(bob, "bob")
     bob.post("/notes/new", data={"title": "b", "body": "note de bob"})
-    alice.post("/security/delete", data={"password": PWD})
+    alice.post("/security/delete", data={"delete-password": PWD})
     assert count(app, "users") == 1 and count(app, "notes") == 1
     assert bob.get("/notes").status_code == 200
 

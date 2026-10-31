@@ -24,7 +24,8 @@ import seclog
 import twofa
 from seclog import log_event
 from forms import (ChangePasswordForm, DeleteAccountForm, DisableTotpForm,
-                   EmptyForm, LoginForm, NoteForm, RegisterForm, TotpForm)
+                   EmptyForm, LoginForm, NoteForm, RegenerateCodesForm,
+                   RegisterForm, TotpForm)
 
 PENDING_2FA_TTL = 300    # 5 min pour saisir le code après le mot de passe
 MAX_2FA_ATTEMPTS = 5     # au-delà, il faut retaper le mot de passe
@@ -323,10 +324,11 @@ def register_routes(app):
             "SELECT COUNT(*) FROM recovery_codes WHERE user_id = ? AND used = 0",
             (user["id"],)).fetchone()[0]
         return render_template("security.html", enabled=bool(user["totp_secret"]),
-                               remaining=remaining, disable_form=DisableTotpForm(),
+                               remaining=remaining, disable_form=DisableTotpForm(prefix="disable"),
                                password_form=ChangePasswordForm(),
                                logout_all_form=EmptyForm(),
-                               delete_form=DeleteAccountForm())
+                               delete_form=DeleteAccountForm(prefix="delete"),
+                               regen_form=RegenerateCodesForm(prefix="regen"))
 
     @app.route("/security/activity")
     @login_required
@@ -342,7 +344,7 @@ def register_routes(app):
     @login_required
     @limiter.limit("5 per minute")
     def delete_account():
-        form = DeleteAccountForm()
+        form = DeleteAccountForm(prefix="delete")
         conn = db.get_db()
         user = current_user_full()
 
@@ -453,11 +455,44 @@ def register_routes(app):
         svg = twofa.qr_svg(twofa.provisioning_uri(secret, g.user["username"]))
         return svg, 200, {"Content-Type": "image/svg+xml", "Cache-Control": "no-store"}
 
+    @app.route("/security/2fa/recovery-codes", methods=["POST"])
+    @login_required
+    @limiter.limit("5 per minute")
+    def regenerate_recovery_codes():
+        form = RegenerateCodesForm(prefix="regen")  # champs regen-password / regen-code
+        conn = db.get_db()
+        user = current_user_full()
+        if not user["totp_secret"]:
+            return redirect(url_for("security"))
+
+        ok = False
+        if form.validate_on_submit():
+            try:
+                ph.verify(user["password_hash"], form.password.data)
+                ok = True
+            except (VerificationError, InvalidHashError):
+                ok = False
+            # Code TOTP OU code de secours accepté (téléphone perdu = cas typique)
+            ok = ok and bool(twofa.check_second_factor(conn, user, form.code.data))
+
+        if not ok:
+            log_event("recovery_codes_regen_failed", user["id"], user["username"])
+            flash("Mot de passe ou code invalide. Codes NON régénérés.", "error")
+            return redirect(url_for("security"))
+
+        # store_recovery_codes SUPPRIME tous les anciens codes avant d'en créer
+        # 10 nouveaux : une ancienne liste qui aurait fuité devient inutile.
+        codes = twofa.store_recovery_codes(conn, user["id"])
+        conn.commit()
+        log_event("recovery_codes_regenerated", user["id"], user["username"])
+        return render_template("recovery_codes.html", codes=codes,
+                               heading="🔄 Nouveaux codes de secours")
+
     @app.route("/security/2fa/disable", methods=["POST"])
     @login_required
     @limiter.limit("5 per minute")
     def twofa_disable():
-        form = DisableTotpForm()
+        form = DisableTotpForm(prefix="disable")
         conn = db.get_db()
         user = current_user_full()
         if form.validate_on_submit() and user["totp_secret"]:

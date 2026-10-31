@@ -52,6 +52,10 @@ class DisableTotpForm(FlaskForm):
                        validators=[DataRequired(), Length(min=6, max=20)])
 
 
+class RegenerateCodesForm(DisableTotpForm):
+    """Mêmes champs (mot de passe + code 2FA) : action tout aussi sensible."""
+
+
 class ChangePasswordForm(FlaskForm):
     # On redemande l'ancien mot de passe : un voleur de cookie ne le connaît pas
     current = PasswordField("Mot de passe actuel",

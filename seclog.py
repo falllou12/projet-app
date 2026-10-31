@@ -35,6 +35,8 @@ EVENTS = {
     "2fa_failed":             ("Code 2FA invalide", True),
     "recovery_code_used":     ("Code de secours utilisé", True),
     "2fa_enabled":            ("Double authentification activée", False),
+    "recovery_codes_regenerated": ("Nouveaux codes de secours générés", False),
+    "recovery_codes_regen_failed": ("Échec de génération des codes de secours", True),
     "2fa_disabled":           ("Double authentification désactivée", True),
     "2fa_disable_failed":     ("Échec de désactivation de la 2FA", True),
     "password_changed":       ("Mot de passe changé", False),

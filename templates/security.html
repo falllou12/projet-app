@@ -29,7 +29,18 @@
   <h2>Double authentification (TOTP)</h2>
   {% if enabled %}
     <p class="ok">✔ Activée</p>
-    <p class="muted">Codes de secours restants : {{ remaining }} / 10</p>
+    <p class="{{ 'alert-text' if remaining <= 3 else 'muted' }}">Codes de secours restants : {{ remaining }} / 10
+      {% if remaining <= 3 %}— génère-en de nouveaux avant d'être bloqué !{% endif %}</p>
+
+    <h3>Nouveaux codes de secours</h3>
+    <p class="muted">Remplace tous tes codes de secours (les anciens ne marcheront plus).</p>
+    <form method="post" action="{{ url_for('regenerate_recovery_codes') }}" novalidate>
+      {{ regen_form.csrf_token }}
+      {{ field(regen_form.password, autocomplete="current-password") }}
+      {{ field(regen_form.code, autocomplete="one-time-code") }}
+      <button type="submit">Générer 10 nouveaux codes</button>
+    </form>
+
     <h3>Désactiver</h3>
     <form method="post" action="{{ url_for('twofa_disable') }}" novalidate>
       {{ disable_form.csrf_token }}
