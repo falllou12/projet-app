@@ -41,6 +41,8 @@ un `ALTER TABLE` construit avec une f-string. « 0 problème » ne veut donc pas
 | CSRF | Jeton dans chaque formulaire (Flask-WTF), déconnexion et suppression en POST | `forms.py` |
 | IDOR (voir la note d'un autre) | `WHERE id = ? AND user_id = ?` puis 404 | `get_own_note` |
 | Brute-force | 5 tentatives de connexion par minute et par IP | `@limiter.limit` |
+| Brute-force distribué (botnet, beaucoup d'IP) | Blocage progressif **par compte** : 1, 2, 4… min, max 1 h ; échecs 2FA comptés aussi | `lockout.py` |
+| Énumération via le blocage | Échecs suivis par nom saisi, même inexistant ; message identique | `record_failure` |
 | Énumération des comptes | Message d'erreur générique + hash bidon (temps constant) | `login` |
 | Fixation de session | `session.clear()` à la connexion | `login` |
 | Vol de cookie | `HttpOnly`, `SameSite=Lax`, `Secure` en HTTPS | `create_app` |

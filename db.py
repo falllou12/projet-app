@@ -63,6 +63,12 @@ def migrate_db():
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS idx_recovery_user ON recovery_codes (user_id);
+        CREATE TABLE IF NOT EXISTS login_failures (
+            username     TEXT    PRIMARY KEY,
+            failures     INTEGER NOT NULL DEFAULT 0,
+            last_failure INTEGER NOT NULL,
+            locked_until INTEGER NOT NULL DEFAULT 0
+        );
     """)
     conn.commit()
     return added

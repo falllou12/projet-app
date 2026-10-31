@@ -1,4 +1,5 @@
 -- Schéma de la base SQLite
+DROP TABLE IF EXISTS login_failures;
 DROP TABLE IF EXISTS recovery_codes;
 DROP TABLE IF EXISTS notes;
 DROP TABLE IF EXISTS users;
@@ -42,3 +43,12 @@ CREATE TABLE recovery_codes (
 );
 
 CREATE INDEX idx_recovery_user ON recovery_codes (user_id);
+
+-- Échecs de connexion par NOM saisi (même s'il n'existe pas : anti-énumération).
+-- Pas de clé étrangère vers users, justement pour suivre les noms inexistants.
+CREATE TABLE login_failures (
+    username     TEXT    PRIMARY KEY,
+    failures     INTEGER NOT NULL DEFAULT 0,
+    last_failure INTEGER NOT NULL,          -- timestamp Unix
+    locked_until INTEGER NOT NULL DEFAULT 0 -- timestamp Unix, 0 = pas bloqué
+);

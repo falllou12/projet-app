@@ -19,6 +19,7 @@ from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFError, CSRFProtect
 
 import db
+import lockout
 import twofa
 from forms import (ChangePasswordForm, DeleteAccountForm, DisableTotpForm,
                    EmptyForm, LoginForm, NoteForm, RegisterForm, TotpForm)
@@ -182,8 +183,17 @@ def register_routes(app):
         form = LoginForm()
         if form.validate_on_submit():
             conn = db.get_db()
+            username = form.username.data
+
+            # Compte bloqué → on ne vérifie MÊME PAS le mot de passe, sinon
+            # l'attaquant continuerait à tester (et verrait quand ça marche).
+            remaining = lockout.lock_remaining(conn, username)
+            if remaining:
+                flash(lockout.lock_message(remaining), "error")
+                return render_template("login.html", form=form), 429
+
             user = conn.execute(
-                "SELECT * FROM users WHERE username = ?", (form.username.data,)
+                "SELECT * FROM users WHERE username = ?", (username,)
             ).fetchone()
 
             stored_hash = user["password_hash"] if user else DUMMY_HASH
@@ -209,10 +219,17 @@ def register_routes(app):
                     session["2fa_sv"] = user["session_version"]
                     session["2fa_started"] = int(time.time())
                     session["2fa_fails"] = 0
+                    # PAS de lockout.reset() ici : sinon un attaquant qui connaît
+                    # le mot de passe remettrait le compteur à zéro et pourrait
+                    # brute-forcer la 2FA sans fin. Reset seulement après le code.
                     return redirect(url_for("login_2fa"))
+                lockout.reset(conn, username)
                 start_session(user["id"], user["session_version"])
                 return redirect(url_for("notes_list"))
 
+            # Compté même si le nom n'existe pas → comportement identique
+            # pour tous les noms (pas d'énumération des comptes).
+            lockout.record_failure(conn, username)
             # Message volontairement vague : on ne dit pas si c'est le nom
             # ou le mot de passe qui est faux.
             flash("Identifiants invalides.", "error")
@@ -246,10 +263,19 @@ def register_routes(app):
                 session.clear()
                 flash("Session expirée, reconnecte-toi.", "error")
                 return redirect(url_for("login"))
+            # Le compte a pu être bloqué depuis une AUTRE session (attaque distribuée)
+            remaining = lockout.lock_remaining(conn, user["username"])
+            if remaining:
+                session.clear()
+                flash(lockout.lock_message(remaining), "error")
+                return redirect(url_for("login"))
             if user["totp_secret"] and twofa.check_second_factor(conn, user, form.code.data):
+                lockout.reset(conn, user["username"])  # connexion COMPLÈTE réussie
                 start_session(user["id"], user["session_version"])
                 return redirect(url_for("notes_list"))
 
+            # Un mauvais code 2FA compte comme un échec sur le compte
+            lockout.record_failure(conn, user["username"])
             # Le rate limit est par IP. Ce compteur limite aussi par session :
             # après 5 échecs, il faut recommencer depuis le mot de passe.
             session["2fa_fails"] = session.get("2fa_fails", 0) + 1
