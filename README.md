@@ -13,7 +13,23 @@ python3 -m venv venv
 ./venv/bin/flask --app app run         # http://127.0.0.1:5000
 ```
 
-Tests de sécurité : `./venv/bin/pip install pytest && ./venv/bin/pytest -v`
+## Vérifier avant chaque commit
+
+```bash
+./venv/bin/pip install -r requirements-dev.txt   # une seule fois
+./check.sh
+```
+
+`check.sh` lance trois contrôles et s'arrête au premier échec :
+
+| Outil | Ce qu'il vérifie |
+|---|---|
+| `pytest` | Les tests d'attaque (SQLi, XSS, IDOR, CSRF, 2FA, sessions…) échouent bien |
+| `bandit` | Motifs dangereux dans le code (SQL en f-string, `shell=True`, `debug=True`, secrets en dur…) |
+| `pip-audit` | CVE connues dans les dépendances |
+
+`bandit` cherche des motifs, il ne comprend pas le code. Par exemple, il ne voit pas
+un `ALTER TABLE` construit avec une f-string. « 0 problème » ne veut donc pas dire « code sûr ».
 
 ## Ce qui protège l'application
 
