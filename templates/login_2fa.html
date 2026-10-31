@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Vérification{% endblock %}
+{% block content %}
+<h1>Double authentification</h1>
+<form method="post" class="card" novalidate>
+  {{ form.csrf_token }}
+  <p class="muted">Entre le code à 6 chiffres de ton application, ou un code de secours.</p>
+  {{ field(form.code, autocomplete="one-time-code", inputmode="text", autofocus=true) }}
+  <button type="submit">Vérifier</button>
+</form>
+{% endblock %}

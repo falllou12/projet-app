@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+  <h1>Mes notes</h1>
+  <a class="button" href="{{ url_for('note_new') }}">+ Nouvelle note</a>
+</div>
+{% if notes %}
+  <ul class="notes">
+  {% for n in notes %}
+    <li><a href="{{ url_for('note_view', note_id=n['id']) }}">{{ n['title'] }}</a>
+        <small>{{ n['updated_at'] }}</small></li>
+  {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">Aucune note pour l'instant.</p>
+{% endif %}
+{% endblock %}

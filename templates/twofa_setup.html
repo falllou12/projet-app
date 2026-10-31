@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Activer la 2FA{% endblock %}
+{% block content %}
+<h1>Activer la double authentification</h1>
+<section class="card">
+  <p><strong>1.</strong> Scanne ce QR code avec ton application (Aegis, Google Authenticator, 2FAS…).</p>
+  <img class="qr" src="{{ url_for('twofa_qr') }}" alt="QR code à scanner" width="200" height="200">
+  <p class="muted">Ou saisis la clé à la main :</p>
+  <code class="secret">{{ secret }}</code>
+  <p><strong>2.</strong> Entre le code affiché pour confirmer.</p>
+  <form method="post" novalidate>
+    {{ form.csrf_token }}
+    {{ field(form.code, autocomplete="one-time-code", inputmode="numeric") }}
+    <button type="submit">Confirmer et activer</button>
+  </form>
+</section>
+{% endblock %}

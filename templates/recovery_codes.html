@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Codes de secours{% endblock %}
+{% block content %}
+<h1>✔ 2FA activée</h1>
+<section class="card">
+  <p><strong>Note ces codes de secours maintenant.</strong> Ils ne seront plus jamais affichés.
+     Chacun permet une seule connexion si tu perds ton téléphone.</p>
+  <ul class="codes">
+    {% for c in codes %}<li><code>{{ c }}</code></li>{% endfor %}
+  </ul>
+  <a class="button" href="{{ url_for('security') }}">J'ai noté mes codes</a>
+</section>
+{% endblock %}

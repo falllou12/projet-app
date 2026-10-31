@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Sécurité{% endblock %}
+{% block content %}
+<h1>Sécurité du compte</h1>
+<section class="card">
+  <h2>Changer le mot de passe</h2>
+  <form method="post" action="{{ url_for('change_password') }}" novalidate>
+    {{ password_form.csrf_token }}
+    {{ field(password_form.current, autocomplete="current-password") }}
+    {{ field(password_form.new, autocomplete="new-password") }}
+    {{ field(password_form.confirm, autocomplete="new-password") }}
+    <button type="submit">Changer</button>
+  </form>
+  <p class="muted">Tes autres appareils seront déconnectés.</p>
+</section>
+
+<section class="card">
+  <h2>Sessions</h2>
+  <p class="muted">Connecté sur un ordinateur public et oublié de te déconnecter ?</p>
+  <form method="post" action="{{ url_for('logout_all') }}">
+    {{ logout_all_form.csrf_token }}
+    <button type="submit" class="danger">Déconnecter tous les autres appareils</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Double authentification (TOTP)</h2>
+  {% if enabled %}
+    <p class="ok">✔ Activée</p>
+    <p class="muted">Codes de secours restants : {{ remaining }} / 10</p>
+    <h3>Désactiver</h3>
+    <form method="post" action="{{ url_for('twofa_disable') }}" novalidate>
+      {{ disable_form.csrf_token }}
+      {{ field(disable_form.password, autocomplete="current-password") }}
+      {{ field(disable_form.code, autocomplete="one-time-code") }}
+      <button type="submit" class="danger">Désactiver la 2FA</button>
+    </form>
+  {% else %}
+    <p>Désactivée. Avec la 2FA, un mot de passe volé ne suffit plus pour entrer.</p>
+    <a class="button" href="{{ url_for('twofa_setup') }}">Activer</a>
+  {% endif %}
+</section>
+{% endblock %}

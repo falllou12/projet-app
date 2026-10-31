@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ note['title'] }}{% endblock %}
+{% block content %}
+<article class="card">
+  <h1>{{ note['title'] }}</h1>
+  <small class="muted">Modifiée le {{ note['updated_at'] }}</small>
+  {# Échappement automatique : le contenu est affiché comme du TEXTE, jamais interprété comme du HTML #}
+  <div class="body">{{ note['body'] }}</div>
+</article>
+<div class="row">
+  <a class="button" href="{{ url_for('note_edit', note_id=note['id']) }}">Modifier</a>
+  <form method="post" action="{{ url_for('note_delete', note_id=note['id']) }}" class="inline">
+    {{ delete_form.csrf_token }}
+    <button type="submit" class="danger">Supprimer</button>
+  </form>
+  <a href="{{ url_for('notes_list') }}">← Retour</a>
+</div>
+{% endblock %}

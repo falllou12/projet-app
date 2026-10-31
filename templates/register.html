@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Inscription{% endblock %}
+{% block content %}
+<h1>Créer un compte</h1>
+<form method="post" class="card" novalidate>
+  {{ form.csrf_token }}
+  {{ field(form.username, autocomplete="username") }}
+  {{ field(form.password, autocomplete="new-password") }}
+  {{ field(form.confirm, autocomplete="new-password") }}
+  <button type="submit">S'inscrire</button>
+</form>
+{% endblock %}

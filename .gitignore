@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Contient la clé secrète et la base de données : NE JAMAIS COMMITER
+instance/

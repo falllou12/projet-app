@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Connexion{% endblock %}
+{% block content %}
+<h1>Connexion</h1>
+<form method="post" class="card" novalidate>
+  {{ form.csrf_token }}
+  {{ field(form.username, autocomplete="username") }}
+  {{ field(form.password, autocomplete="current-password") }}
+  <button type="submit">Se connecter</button>
+</form>
+<p>Pas de compte ? <a href="{{ url_for('register') }}">Inscris-toi</a>.</p>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block content %}
+<h1>{{ action }} une note</h1>
+<form method="post" class="card" novalidate>
+  {{ form.csrf_token }}
+  {{ field(form.title) }}
+  {{ field(form.body, rows=12) }}
+  <button type="submit">{{ action }}</button>
+  <a href="{{ url_for('notes_list') }}">Annuler</a>
+</form>
+{% endblock %}
