@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Activité récente{% endblock %}
+{% block content %}
+<div class="row">
+  <h1>Activité récente</h1>
+  <a href="{{ url_for('security') }}">← Sécurité</a>
+</div>
+<p class="muted">Les 50 derniers événements de ton compte (gardés 90 jours).
+  Une ligne <span class="alert-text">en rouge</span> que tu ne reconnais pas ?
+  Change ton mot de passe et déconnecte tes autres appareils.</p>
+
+{% if events %}
+<ul class="events">
+  {% for e in events %}
+  <li class="{{ 'alert' if e['event']|event_alert }}">
+    <strong>{{ e['event']|event_label }}</strong>
+    <small>{{ e['created_at']|datetime }} · IP {{ e['ip'] or '?' }}</small>
+    {# User-Agent contrôlé par l'attaquant → échappé automatiquement par Jinja #}
+    <small class="ua">{{ e['user_agent'] or 'Appareil inconnu' }}</small>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+  <p class="muted">Aucun événement.</p>
+{% endif %}
+{% endblock %}

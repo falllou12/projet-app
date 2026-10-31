@@ -20,7 +20,9 @@ from flask_wtf.csrf import CSRFError, CSRFProtect
 
 import db
 import lockout
+import seclog
 import twofa
+from seclog import log_event
 from forms import (ChangePasswordForm, DeleteAccountForm, DisableTotpForm,
                    EmptyForm, LoginForm, NoteForm, RegisterForm, TotpForm)
 
@@ -71,6 +73,7 @@ def create_app(test_config=None):
         app.config.update(test_config)
 
     db.init_app(app)
+    seclog.init_app(app)
     csrf.init_app(app)
     limiter.init_app(app)
     register_routes(app)
@@ -165,7 +168,7 @@ def register_routes(app):
         if form.validate_on_submit():
             conn = db.get_db()
             try:
-                conn.execute(
+                cur = conn.execute(
                     "INSERT INTO users (username, password_hash) VALUES (?, ?)",
                     (form.username.data, ph.hash(form.password.data)),
                 )
@@ -173,6 +176,7 @@ def register_routes(app):
             except conn.IntegrityError:  # contrainte UNIQUE sur username
                 form.username.errors.append("Ce nom est déjà pris.")
             else:
+                log_event("register", cur.lastrowid, form.username.data)
                 flash("Compte créé. Tu peux te connecter.", "success")
                 return redirect(url_for("login"))
         return render_template("register.html", form=form)
@@ -189,6 +193,9 @@ def register_routes(app):
             # l'attaquant continuerait à tester (et verrait quand ça marche).
             remaining = lockout.lock_remaining(conn, username)
             if remaining:
+                target = conn.execute("SELECT id FROM users WHERE username = ?",
+                                      (username,)).fetchone()
+                log_event("login_blocked", target["id"] if target else None, username)
                 flash(lockout.lock_message(remaining), "error")
                 return render_template("login.html", form=form), 429
 
@@ -224,12 +231,17 @@ def register_routes(app):
                     # brute-forcer la 2FA sans fin. Reset seulement après le code.
                     return redirect(url_for("login_2fa"))
                 lockout.reset(conn, username)
+                log_event("login_success", user["id"], username, method="password")
                 start_session(user["id"], user["session_version"])
                 return redirect(url_for("notes_list"))
 
             # Compté même si le nom n'existe pas → comportement identique
             # pour tous les noms (pas d'énumération des comptes).
-            lockout.record_failure(conn, username)
+            locked_for = lockout.record_failure(conn, username)
+            uid = user["id"] if user else None   # None → fichier seulement
+            log_event("login_failed", uid, username)
+            if locked_for:
+                log_event("account_locked", uid, username, duration=locked_for)
             # Message volontairement vague : on ne dit pas si c'est le nom
             # ou le mot de passe qui est faux.
             flash("Identifiants invalides.", "error")
@@ -238,6 +250,8 @@ def register_routes(app):
     @app.route("/logout", methods=["POST"])  # POST + CSRF : un lien piégé ne peut pas te déconnecter
     def logout():
         if EmptyForm().validate_on_submit():
+            if g.user:
+                log_event("logout", g.user["id"], g.user["username"])
             session.clear()
         return redirect(url_for("login"))
 
@@ -266,16 +280,27 @@ def register_routes(app):
             # Le compte a pu être bloqué depuis une AUTRE session (attaque distribuée)
             remaining = lockout.lock_remaining(conn, user["username"])
             if remaining:
+                log_event("login_blocked", user["id"], user["username"])
                 session.clear()
                 flash(lockout.lock_message(remaining), "error")
                 return redirect(url_for("login"))
-            if user["totp_secret"] and twofa.check_second_factor(conn, user, form.code.data):
+            factor = user["totp_secret"] and twofa.check_second_factor(conn, user, form.code.data)
+            if factor:
                 lockout.reset(conn, user["username"])  # connexion COMPLÈTE réussie
+                if factor == "recovery":
+                    # Inhabituel : téléphone perdu… ou code de secours volé
+                    log_event("recovery_code_used", user["id"], user["username"])
+                log_event("login_success", user["id"], user["username"],
+                          method=f"password+{factor}")
                 start_session(user["id"], user["session_version"])
                 return redirect(url_for("notes_list"))
 
-            # Un mauvais code 2FA compte comme un échec sur le compte
-            lockout.record_failure(conn, user["username"])
+            # Un mauvais code 2FA compte comme un échec sur le compte.
+            # On journalise l'ÉCHEC, jamais le code tapé (secret !).
+            locked_for = lockout.record_failure(conn, user["username"])
+            log_event("2fa_failed", user["id"], user["username"])
+            if locked_for:
+                log_event("account_locked", user["id"], user["username"], duration=locked_for)
             # Le rate limit est par IP. Ce compteur limite aussi par session :
             # après 5 échecs, il faut recommencer depuis le mot de passe.
             session["2fa_fails"] = session.get("2fa_fails", 0) + 1
@@ -303,6 +328,16 @@ def register_routes(app):
                                logout_all_form=EmptyForm(),
                                delete_form=DeleteAccountForm())
 
+    @app.route("/security/activity")
+    @login_required
+    def security_activity():
+        # WHERE user_id = ? : chacun ne voit QUE son propre journal (pas d'IDOR)
+        events = db.get_db().execute(
+            "SELECT event, ip, user_agent, created_at FROM security_events "
+            "WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 50",
+            (g.user["id"],)).fetchall()
+        return render_template("activity.html", events=events)
+
     @app.route("/security/delete", methods=["POST"])
     @login_required
     @limiter.limit("5 per minute")
@@ -324,6 +359,7 @@ def register_routes(app):
                     conn, user, form.code.data)
 
         if not ok:
+            log_event("account_delete_failed", user["id"], user["username"])
             flash("Mot de passe ou code invalide. Compte NON supprimé.", "error")
             return redirect(url_for("security"))
 
@@ -331,6 +367,8 @@ def register_routes(app):
         # Les autres appareils seront éjectés : load_user ne trouvera plus le compte.
         conn.execute("DELETE FROM users WHERE id = ?", (user["id"],))
         conn.commit()
+        # Fichier seulement : les lignes en base partent avec le compte (CASCADE)
+        log_event("account_deleted", None, user["username"], deleted_user_id=user["id"])
         session.clear()
         flash("Ton compte et toutes tes notes ont été supprimés.", "success")
         return redirect(url_for("login"))
@@ -350,6 +388,7 @@ def register_routes(app):
         try:
             ph.verify(user["password_hash"], form.current.data)
         except (VerificationError, InvalidHashError):
+            log_event("password_change_failed", user["id"], user["username"])
             flash("Mot de passe actuel incorrect.", "error")
             return redirect(url_for("security"))
         if form.new.data == form.current.data:
@@ -360,6 +399,7 @@ def register_routes(app):
                      (ph.hash(form.new.data), user["id"]))
         # Mot de passe changé = peut-être volé → on éjecte les autres appareils
         revoke_other_sessions(conn, user["id"])
+        log_event("password_changed", user["id"], user["username"])
         flash("Mot de passe changé. Tes autres appareils ont été déconnectés.", "success")
         return redirect(url_for("security"))
 
@@ -368,6 +408,7 @@ def register_routes(app):
     def logout_all():
         if EmptyForm().validate_on_submit():
             revoke_other_sessions(db.get_db(), g.user["id"])
+            log_event("sessions_revoked", g.user["id"], g.user["username"])
             flash("Tous tes autres appareils ont été déconnectés.", "success")
         return redirect(url_for("security"))
 
@@ -396,6 +437,7 @@ def register_routes(app):
                     "totp_last_step = ? WHERE id = ?", (secret, step, user["id"]))
                 codes = twofa.store_recovery_codes(conn, user["id"])
                 conn.commit()
+                log_event("2fa_enabled", user["id"], user["username"])
                 # Affichés UNE SEULE FOIS (rendu direct, pas de redirection)
                 return render_template("recovery_codes.html", codes=codes)
             flash("Code invalide. Vérifie l'heure de ton téléphone.", "error")
@@ -429,8 +471,10 @@ def register_routes(app):
                              "WHERE id = ?", (user["id"],))
                 conn.execute("DELETE FROM recovery_codes WHERE user_id = ?", (user["id"],))
                 conn.commit()
+                log_event("2fa_disabled", user["id"], user["username"])
                 flash("Double authentification désactivée.", "success")
                 return redirect(url_for("security"))
+        log_event("2fa_disable_failed", user["id"], user["username"])
         flash("Mot de passe ou code invalide.", "error")
         return redirect(url_for("security"))
 

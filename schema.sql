@@ -1,4 +1,5 @@
 -- Schéma de la base SQLite
+DROP TABLE IF EXISTS security_events;
 DROP TABLE IF EXISTS login_failures;
 DROP TABLE IF EXISTS recovery_codes;
 DROP TABLE IF EXISTS notes;
@@ -52,3 +53,17 @@ CREATE TABLE login_failures (
     last_failure INTEGER NOT NULL,          -- timestamp Unix
     locked_until INTEGER NOT NULL DEFAULT 0 -- timestamp Unix, 0 = pas bloqué
 );
+
+-- Journal de sécurité visible par l'utilisateur (événements de SON compte).
+-- Gardé 90 jours (une IP est une donnée personnelle : nLPD / RGPD).
+CREATE TABLE IF NOT EXISTS security_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    event      TEXT    NOT NULL,
+    ip         TEXT,
+    user_agent TEXT,
+    created_at INTEGER NOT NULL,   -- timestamp Unix (UTC)
+    FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_events_user ON security_events (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_events_date ON security_events (created_at);

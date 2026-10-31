@@ -16,6 +16,7 @@ PWD = "un-mot-de-passe-long"
 
 def make_app(tmp_path, **extra):
     app = create_app({"TESTING": True, "DATABASE": str(tmp_path / "t.sqlite"),
+                      "SECURITY_LOG": str(tmp_path / "security.log"),
                       "WTF_CSRF_ENABLED": False, "RATELIMIT_ENABLED": False, **extra})
     with app.app_context():
         db.init_db()

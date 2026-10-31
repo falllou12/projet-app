@@ -3,6 +3,7 @@
 {% block title %}Sécurité{% endblock %}
 {% block content %}
 <h1>Sécurité du compte</h1>
+<p><a href="{{ url_for('security_activity') }}">Voir l'activité récente de mon compte →</a></p>
 <section class="card">
   <h2>Changer le mot de passe</h2>
   <form method="post" action="{{ url_for('change_password') }}" novalidate>

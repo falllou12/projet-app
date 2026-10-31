@@ -93,15 +93,16 @@ def use_recovery_code(conn, user_id: int, code: str) -> bool:
     return cur.rowcount == 1
 
 
-def check_second_factor(conn, user, code: str) -> bool:
-    """Vérifie un code TOTP ou un code de secours, et enregistre son usage."""
+def check_second_factor(conn, user, code: str) -> str | None:
+    """Vérifie un code TOTP ou un code de secours, et enregistre son usage.
+    Retourne "totp", "recovery" (valeurs vraies) ou None si refusé."""
     step = verify_totp(user["totp_secret"], code, user["totp_last_step"])
     if step is not None:
         conn.execute("UPDATE users SET totp_last_step = ? WHERE id = ?",
                      (step, user["id"]))
         conn.commit()
-        return True
+        return "totp"
     if use_recovery_code(conn, user["id"], code):
         conn.commit()
-        return True
-    return False
+        return "recovery"
+    return None

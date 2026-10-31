@@ -55,7 +55,18 @@ un `ALTER TABLE` construit avec une f-string. « 0 problème » ne veut donc pas
 | Changement de mot de passe par un voleur de session | Ancien mot de passe redemandé, 5 essais/min | `change_password` |
 | Suppression du compte par un voleur de session | Mot de passe + code 2FA redemandés, POST + CSRF, 5 essais/min | `delete_account` |
 | Notes « supprimées » lisibles dans le fichier (forensique) | `PRAGMA secure_delete = ON` : données écrasées par des zéros | `db.py` |
+| Attaque passée inaperçue | Journal de sécurité : `instance/security.log` (JSON, 90 jours, droits 600) + page « Activité récente » par utilisateur | `seclog.py` |
+| Injection de logs (CWE-117) | Une ligne JSON par événement : un `\n` saisi reste du texte | `log_event` |
+| Secrets dans les logs | Jamais de mot de passe, code 2FA ou clé journalisé (vérifié par test) | `test_no_secrets_in_logs` |
 | Clickjacking | `frame-ancestors 'none'`, `X-Frame-Options` | `security_headers` |
+
+## Lire le journal de sécurité
+
+```bash
+tail -f instance/security.log                                 # en direct
+grep '"login_failed"' instance/security.log | wc -l           # nombre d'échecs
+jq -r 'select(.event=="login_failed") | .ip' instance/security.log | sort | uniq -c | sort -rn   # IP les plus actives
+```
 
 ## En production (pas en local)
 
@@ -64,3 +75,4 @@ un `ALTER TABLE` construit avec une f-string. « 0 problème » ne veut donc pas
 - Stockage Redis pour le rate limiting (la mémoire se vide à chaque redémarrage).
 - `instance/` contient la clé secrète et la base : ne jamais la commiter.
 - La clé TOTP est stockée en clair dans la base (comme sur la plupart des sites). Pour aller plus loin, la chiffrer avec une clé hors de la base.
+- Derrière nginx, `request.remote_addr` = l'IP de nginx : utiliser `werkzeug.middleware.proxy_fix.ProxyFix` (et ne jamais faire confiance à `X-Forwarded-For` sans proxy de confiance, car il est falsifiable).

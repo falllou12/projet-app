@@ -69,6 +69,17 @@ def migrate_db():
             last_failure INTEGER NOT NULL,
             locked_until INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS security_events (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL,
+            event      TEXT    NOT NULL,
+            ip         TEXT,
+            user_agent TEXT,
+            created_at INTEGER NOT NULL,   -- timestamp Unix (UTC)
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_events_user ON security_events (user_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_events_date ON security_events (created_at);
     """)
     conn.commit()
     return added

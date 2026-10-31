@@ -36,7 +36,8 @@ def lock_duration(failures: int) -> int:
     return min(BASE_LOCK * 2 ** exponent, MAX_LOCK)
 
 
-def record_failure(conn, username: str) -> None:
+def record_failure(conn, username: str) -> int:
+    """Enregistre un échec. Retourne la durée du blocage déclenché (0 = aucun)."""
     t = now()
     # Ménage : oublie les vieux échecs (sinon la table grossit sans fin,
     # un attaquant pouvant essayer des millions de noms différents).
@@ -57,6 +58,7 @@ def record_failure(conn, username: str) -> None:
         conn.execute("UPDATE login_failures SET locked_until = ? WHERE username = ?",
                      (t + duration, username))
     conn.commit()
+    return duration
 
 
 def reset(conn, username: str) -> None:
