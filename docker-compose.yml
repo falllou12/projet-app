@@ -1,0 +1,77 @@
+# Architecture de production, en local :  nginx (HTTPS) → app (gunicorn) → redis
+# Lancer :   ./deploy/gen-cert.sh   (une seule fois)
+#            docker compose up -d --build
+# Ouvrir :   https://localhost:8443
+
+name: projet-app
+
+# Durcissement commun aux 3 conteneurs
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true                       # système de fichiers en lecture seule
+  tmpfs: [/tmp]                         # sauf /tmp, en mémoire
+  cap_drop: [ALL]                       # aucun privilège Linux spécial
+  security_opt: ["no-new-privileges:true"]  # impossible de redevenir root (setuid…)
+  pids_limit: 200                       # anti « fork bomb »
+
+services:
+  app:
+    <<: *hardening
+    build: .
+    image: projet-app:latest
+    environment:
+      BEHIND_PROXY: "1"                 # lit l'IP réelle envoyée par nginx
+      HTTPS_ONLY: "1"                   # cookie de session « Secure »
+      HSTS: "0"                         # désactivé sur localhost (voir README)
+      TRUSTED_HOSTS: "localhost,127.0.0.1"  # autres en-têtes Host refusés
+      RATELIMIT_STORAGE_URI: "redis://redis:6379/0"
+    volumes:
+      - instance:/app/instance          # base, clé secrète, journal : persistants
+    networks: [back]
+    mem_limit: 512m
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  nginx:
+    <<: *hardening
+    image: nginxinc/nginx-unprivileged:stable-alpine
+    ports:
+      # 127.0.0.1 : accessible depuis CE PC uniquement. Docker contourne ufw,
+      # donc sans ce préfixe le port serait ouvert à tout le réseau Wi-Fi !
+      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:8443:8443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/certs:/etc/nginx/certs:ro
+      - ./static:/usr/share/nginx/static:ro
+    networks: [front, back]
+    mem_limit: 128m
+    depends_on:
+      app:
+        condition: service_healthy
+
+  redis:
+    <<: *hardening
+    image: redis:7.4-alpine
+    user: "999:1000"                    # utilisateur redis, pas root
+    # Compteurs de rate limit seulement : rien à sauvegarder sur disque.
+    # protected-mode no : nécessaire sans mot de passe ; acceptable car redis
+    # n'est joignable QUE depuis le réseau interne « back » (aucun port publié).
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--protected-mode", "no"]
+    tmpfs: [/tmp, /data]
+    networks: [back]
+    mem_limit: 64m
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+networks:
+  front: {}                             # nginx ↔ ton navigateur
+  back:
+    internal: true                      # app + redis : PAS d'accès à Internet
+
+volumes:
+  instance: {}

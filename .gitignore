@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 # Contient la clé secrète et la base de données : NE JAMAIS COMMITER
 instance/
+
+# Certificats et clés TLS : jamais dans git
+deploy/certs/
+.env

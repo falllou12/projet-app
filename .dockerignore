@@ -1,0 +1,13 @@
+# Ce qui ne doit JAMAIS entrer dans l'image
+venv/
+instance/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.pytest_cache/
+deploy/certs/
+.env
+tests/
+check.sh
+requirements-dev.txt

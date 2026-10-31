@@ -17,6 +17,7 @@ from flask import (Flask, abort, flash, g, redirect, render_template,
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFError, CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import db
 import lockout
@@ -32,7 +33,10 @@ MAX_2FA_ATTEMPTS = 5     # au-delà, il faut retaper le mot de passe
 
 ph = PasswordHasher()  # Argon2id avec des paramètres par défaut sûrs
 csrf = CSRFProtect()
-limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
+# En production : redis, partagé entre tous les processus gunicorn.
+# "memory://" = un compteur PAR processus → 4 workers = limite × 4.
+limiter = Limiter(key_func=get_remote_address,
+                  storage_uri=os.environ.get("RATELIMIT_STORAGE_URI", "memory://"))
 
 # Hash « bidon » : quand l'utilisateur n'existe pas, on vérifie quand même
 # un mot de passe. Le temps de réponse est alors le même que pour un vrai
@@ -69,9 +73,25 @@ def create_app(test_config=None):
         SESSION_COOKIE_SECURE=os.environ.get("HTTPS_ONLY") == "1",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=2),
         MAX_CONTENT_LENGTH=64 * 1024,   # refuse les requêtes > 64 Ko
+        # Derrière nginx : lire l'IP réelle dans X-Forwarded-For.
+        # JAMAIS sans proxy : l'en-tête serait falsifiable par le client.
+        BEHIND_PROXY=os.environ.get("BEHIND_PROXY") == "1",
+        # HSTS séparé de HTTPS_ONLY : sur localhost avec un certificat de test,
+        # HSTS forcerait le HTTPS pour TOUS les ports de localhost (même flask run).
+        HSTS=os.environ.get("HSTS", os.environ.get("HTTPS_ONLY", "0")) == "1",
+        # Liste blanche des noms de domaine acceptés dans l'en-tête Host
+        # (anti « Host header injection »). Vide = pas de filtre (dev, tests).
+        TRUSTED_HOSTS=[h.strip() for h in os.environ.get("TRUSTED_HOSTS", "").split(",")
+                       if h.strip()] or None,
     )
     if test_config:
         app.config.update(test_config)
+
+    if app.config["BEHIND_PROXY"]:
+        # x_for=1 : on fait confiance à UN seul proxy (notre nginx), donc on
+        # ne lit que la DERNIÈRE IP ajoutée. Les IP inventées par le client,
+        # placées avant, sont ignorées.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
     db.init_app(app)
     seclog.init_app(app)
@@ -595,7 +615,7 @@ def register_security(app):
         resp.headers["X-Content-Type-Options"] = "nosniff"   # pas de devinette de type MIME
         resp.headers["X-Frame-Options"] = "DENY"             # anti clickjacking (vieux navigateurs)
         resp.headers["Referrer-Policy"] = "same-origin"
-        if app.config["SESSION_COOKIE_SECURE"]:
+        if app.config["HSTS"]:
             resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         # Les pages connectées ne doivent pas rester dans le cache du navigateur
         if g.get("user"):

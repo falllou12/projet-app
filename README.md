@@ -69,11 +69,38 @@ grep '"login_failed"' instance/security.log | wc -l           # nombre d'échecs
 jq -r 'select(.event=="login_failed") | .ip' instance/security.log | sort | uniq -c | sort -rn   # IP les plus actives
 ```
 
-## En production (pas en local)
+## Déploiement (Docker : nginx + gunicorn + redis)
 
-- Ne pas utiliser `flask run` : prendre `gunicorn` derrière nginx avec HTTPS.
-- `export HTTPS_ONLY=1` (cookie `Secure` + HSTS) et `export SECRET_KEY=...`.
-- Stockage Redis pour le rate limiting (la mémoire se vide à chaque redémarrage).
-- `instance/` contient la clé secrète et la base : ne jamais la commiter.
-- La clé TOTP est stockée en clair dans la base (comme sur la plupart des sites). Pour aller plus loin, la chiffrer avec une clé hors de la base.
-- Derrière nginx, `request.remote_addr` = l'IP de nginx : utiliser `werkzeug.middleware.proxy_fix.ProxyFix` (et ne jamais faire confiance à `X-Forwarded-For` sans proxy de confiance, car il est falsifiable).
+```bash
+./deploy/gen-cert.sh                 # certificat HTTPS de test (une fois)
+docker compose up -d --build         # construit et lance les 3 conteneurs
+docker compose ps                    # état (healthy = OK)
+docker compose logs -f app           # journaux de l'application
+docker compose down                  # arrêter (les données restent dans le volume)
+docker compose exec nginx nginx -s reload   # après avoir modifié deploy/nginx.conf
+```
+
+Ouvrir **https://localhost:8443** (avertissement du navigateur : certificat auto-signé, normal en local).
+
+```
+Navigateur ─HTTPS─▶ nginx ─HTTP─▶ app (gunicorn) ─▶ redis
+                   réseau front   réseau back (interne, sans Internet)
+```
+
+| Mesure | Pourquoi |
+|---|---|
+| Ports publiés sur `127.0.0.1` uniquement | Docker contourne `ufw` : sans ça, le port est ouvert à tout le réseau |
+| Réseau `back` en `internal: true` | App compromise = pas d'exfiltration, pas de téléchargement d'outils |
+| `read_only`, `cap_drop: ALL`, `no-new-privileges`, utilisateurs non-root | Limite ce qu'un attaquant peut faire dans un conteneur |
+| nginx **écrase** `X-Forwarded-For` ; Flask ne lit qu'1 niveau (`ProxyFix x_for=1`) | Empêche de falsifier son IP pour contourner le rate limit |
+| Rate limit dans redis | Partagé entre les workers gunicorn (sinon limite × nombre de workers) |
+| TLS 1.2/1.3, délais courts, `server_tokens off` | HTTPS moderne, anti-Slowloris, version de nginx cachée |
+| nginx transmet `Host` avec le port ; Flask n'accepte que `TRUSTED_HOSTS` | Sans le port, Flask-WTF refusait tous les formulaires ; la liste blanche bloque l'injection d'en-tête Host |
+| `HSTS: "0"` en local | HSTS sur `localhost` forcerait le HTTPS pour tous les ports de localhost |
+
+### Sur un vrai serveur, en plus
+- Certificat **Let's Encrypt** (certbot) à la place du certificat auto-signé, et `HSTS: "1"`.
+- Ports `80:8080` et `443:8443` (sans `127.0.0.1`), et pare-feu configuré.
+- SSH par clé uniquement, mises à jour automatiques (`unattended-upgrades`).
+- Sauvegarde régulière du volume `instance` (base + clé secrète).
+- La clé TOTP est stockée en clair dans la base : la chiffrer avec une clé hors de la base.
