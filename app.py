@@ -20,8 +20,8 @@ from flask_wtf.csrf import CSRFError, CSRFProtect
 
 import db
 import twofa
-from forms import (ChangePasswordForm, DisableTotpForm, EmptyForm, LoginForm,
-                   NoteForm, RegisterForm, TotpForm)
+from forms import (ChangePasswordForm, DeleteAccountForm, DisableTotpForm,
+                   EmptyForm, LoginForm, NoteForm, RegisterForm, TotpForm)
 
 PENDING_2FA_TTL = 300    # 5 min pour saisir le code après le mot de passe
 MAX_2FA_ATTEMPTS = 5     # au-delà, il faut retaper le mot de passe
@@ -274,7 +274,40 @@ def register_routes(app):
         return render_template("security.html", enabled=bool(user["totp_secret"]),
                                remaining=remaining, disable_form=DisableTotpForm(),
                                password_form=ChangePasswordForm(),
-                               logout_all_form=EmptyForm())
+                               logout_all_form=EmptyForm(),
+                               delete_form=DeleteAccountForm())
+
+    @app.route("/security/delete", methods=["POST"])
+    @login_required
+    @limiter.limit("5 per minute")
+    def delete_account():
+        form = DeleteAccountForm()
+        conn = db.get_db()
+        user = current_user_full()
+
+        ok = False
+        if form.validate_on_submit():
+            try:
+                ph.verify(user["password_hash"], form.password.data)
+                ok = True
+            except (VerificationError, InvalidHashError):
+                ok = False
+            # 2FA active → un code est obligatoire en plus du mot de passe
+            if ok and user["totp_secret"]:
+                ok = bool(form.code.data) and twofa.check_second_factor(
+                    conn, user, form.code.data)
+
+        if not ok:
+            flash("Mot de passe ou code invalide. Compte NON supprimé.", "error")
+            return redirect(url_for("security"))
+
+        # ON DELETE CASCADE supprime aussi les notes et les codes de secours.
+        # Les autres appareils seront éjectés : load_user ne trouvera plus le compte.
+        conn.execute("DELETE FROM users WHERE id = ?", (user["id"],))
+        conn.commit()
+        session.clear()
+        flash("Ton compte et toutes tes notes ont été supprimés.", "success")
+        return redirect(url_for("login"))
 
     @app.route("/security/password", methods=["POST"])
     @login_required

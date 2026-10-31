@@ -19,7 +19,11 @@ def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(current_app.config["DATABASE"])
         g.db.row_factory = sqlite3.Row          # accès par nom : row["title"]
-        g.db.execute("PRAGMA foreign_keys = ON")  # active les clés étrangères
+        g.db.execute("PRAGMA foreign_keys = ON")  # active les clés étrangères (CASCADE)
+        # Écrase avec des zéros les données supprimées. Sans ça, une note
+        # « supprimée » reste lisible dans le fichier (strings notes.sqlite).
+        # Explicite : ne pas dépendre de la façon dont SQLite a été compilé.
+        g.db.execute("PRAGMA secure_delete = ON")
     return g.db
 
 

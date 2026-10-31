@@ -34,3 +34,4 @@ button.link { background:none; color:var(--accent); padding:0; margin:0; }
 .ok { color:var(--ok); font-weight:600; }
 h2, h3 { margin:8px 0 4px; }
 .card + .card { margin-top:16px; }
+.danger-zone { border-color:var(--danger); }

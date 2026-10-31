@@ -5,7 +5,7 @@ tout POST qui n'a pas le bon jeton (protection CSRF).
 """
 from flask_wtf import FlaskForm
 from wtforms import PasswordField, StringField, TextAreaField
-from wtforms.validators import DataRequired, EqualTo, Length, Regexp
+from wtforms.validators import DataRequired, EqualTo, Length, Optional, Regexp
 
 
 class RegisterForm(FlaskForm):
@@ -64,6 +64,14 @@ class ChangePasswordForm(FlaskForm):
         DataRequired(),
         EqualTo("new", message="Les mots de passe ne correspondent pas."),
     ])
+
+
+class DeleteAccountForm(FlaskForm):
+    password = PasswordField("Mot de passe",
+                             validators=[DataRequired(), Length(max=128)])
+    # Obligatoire seulement si la 2FA est active (vérifié dans la route)
+    code = StringField("Code 2FA ou code de secours",
+                       validators=[Optional(), Length(min=6, max=20)])
 
 
 class EmptyForm(FlaskForm):

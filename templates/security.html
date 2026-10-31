@@ -41,4 +41,17 @@
     <a class="button" href="{{ url_for('twofa_setup') }}">Activer</a>
   {% endif %}
 </section>
+
+<section class="card danger-zone">
+  <h2>Supprimer mon compte</h2>
+  <p>Toutes tes notes seront <strong>définitivement</strong> effacées. Impossible d'annuler.</p>
+  <form method="post" action="{{ url_for('delete_account') }}" novalidate>
+    {{ delete_form.csrf_token }}
+    {{ field(delete_form.password, autocomplete="current-password") }}
+    {% if enabled %}
+      {{ field(delete_form.code, autocomplete="one-time-code") }}
+    {% endif %}
+    <button type="submit" class="danger">Supprimer définitivement mon compte</button>
+  </form>
+</section>
 {% endblock %}
